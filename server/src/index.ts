@@ -52,20 +52,17 @@ app.post('/api/simulator/project', (req, res) => {
   });
 });
 
-// ── Serve frontend in production ──────────────────────────────────────────────
-// The built React app lives at <repo-root>/client/dist (built before server start)
-if (IS_PROD) {
-  const clientDist = path.resolve(__dirname, '..', '..', 'client', 'dist');
-  if (fs.existsSync(clientDist)) {
-    app.use(express.static(clientDist));
-    // SPA fallback — cualquier ruta no-API devuelve index.html (Express 5 usa app.use)
-    app.use((_req, res) => {
-      res.sendFile(path.join(clientDist, 'index.html'));
-    });
-    console.log(`  📦 Serving frontend from ${clientDist}`);
-  } else {
-    console.warn('  ⚠️  client/dist not found — run `npm run build:client` first');
-  }
+// ── Serve frontend (always when client/dist exists) ───────────────────────────
+const clientDist = path.resolve(__dirname, '..', '..', 'client', 'dist');
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  // SPA fallback — any non-API route returns index.html (Express 5 uses app.use)
+  app.use((_req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+  console.log(`  📦 Serving frontend from ${clientDist}`);
+} else {
+  console.warn('  ⚠️  client/dist not found — run `npm run build:client` first');
 }
 
 // Start server
