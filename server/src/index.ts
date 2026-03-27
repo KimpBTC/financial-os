@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import portfolioRoutes from './routes/portfolio';
 import marketRoutes from './routes/market';
 import stockRoutes from './routes/stocks';
@@ -14,9 +16,11 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const IS_PROD = process.env.NODE_ENV === 'production';
 
 // Middleware
-app.use(cors());
+// En producción el frontend se sirve desde el mismo origen → no se necesita CORS
+app.use(cors({ origin: IS_PROD ? false : '*' }));
 app.use(express.json());
 
 // Health check
@@ -47,6 +51,22 @@ app.post('/api/simulator/project', (req, res) => {
     roi: ((futureValue - totalContributed) / totalContributed * 100).toFixed(1),
   });
 });
+
+// ── Serve frontend in production ──────────────────────────────────────────────
+// The built React app lives at <repo-root>/client/dist (built before server start)
+if (IS_PROD) {
+  const clientDist = path.resolve(__dirname, '..', '..', 'client', 'dist');
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    // SPA fallback — cualquier ruta no-API devuelve index.html (Express 5 usa app.use)
+    app.use((_req, res) => {
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
+    console.log(`  📦 Serving frontend from ${clientDist}`);
+  } else {
+    console.warn('  ⚠️  client/dist not found — run `npm run build:client` first');
+  }
+}
 
 // Start server
 app.listen(PORT, () => {

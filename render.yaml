@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: financial-os
+    runtime: node
+    plan: starter          # $7/mo — always on (necesario para cron jobs 24/7)
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data        # Ruta del disco persistente
+    disk:
+      name: financial-os-data
+      mountPath: /data
+      sizeGB: 1             # $1/mo — persiste la base de datos SQLite

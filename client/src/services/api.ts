@@ -1,6 +1,7 @@
 // ═══ API Client — Connects frontend to backend ═══
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+// En desarrollo usa VITE_API_URL (localhost:3001). En producción usa /api (mismo origen).
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${endpoint}`, {
