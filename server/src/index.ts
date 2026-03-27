@@ -11,6 +11,7 @@ import telegramRoutes from './routes/telegram';
 import transactionRoutes from './routes/transactions';
 import snapshotRoutes from './routes/snapshots';
 import { startCronJobs } from './services/cronService';
+import { runDataPipeline } from './services/dataService';
 
 dotenv.config();
 
@@ -65,12 +66,18 @@ if (fs.existsSync(clientDist)) {
   console.warn('  ⚠️  client/dist not found — run `npm run build:client` first');
 }
 
+// Manual pipeline trigger (useful after fresh deploys)
+app.post('/api/admin/run-pipeline', async (_req, res) => {
+  res.json({ status: 'started' });
+  runDataPipeline().catch(e => console.error('Pipeline error:', e));
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`\n  🚀 Financial OS API running on http://localhost:${PORT}`);
   console.log(`  📊 Health check: http://localhost:${PORT}/api/health\n`);
 
-  // Start cron jobs
+  // Start cron jobs (includes delayed initial pipeline run)
   startCronJobs();
 });
 

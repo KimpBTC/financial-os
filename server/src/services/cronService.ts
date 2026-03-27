@@ -35,7 +35,7 @@ export function startCronJobs() {
     }
   });
 
-  // Initial data fetch on startup
+  // Initial data fetch on startup — delay 90s to avoid Yahoo Finance rate limiting on cold start
   setTimeout(async () => {
     console.log('🚀 Running initial data pipeline...');
     try {
@@ -43,7 +43,7 @@ export function startCronJobs() {
     } catch (e: any) {
       console.error('Initial pipeline error:', e.message);
     }
-  }, 5000);
+  }, 90_000);
 
   console.log('✅ Cron jobs scheduled:');
   console.log('   📊 Data pipeline — every 4h on weekdays');

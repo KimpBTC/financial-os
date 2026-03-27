@@ -106,6 +106,8 @@ function calcMarketScore(sp500dd: number, vix: number, fearGreed: number, dollar
   return Math.min(100, score);
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Full data pipeline
 export async function runDataPipeline(): Promise<void> {
   console.log('📊 Running data pipeline...');
@@ -114,9 +116,10 @@ export async function runDataPipeline(): Promise<void> {
   // 1. Fetch all portfolio stocks
   const stocks = db.prepare('SELECT ticker FROM portfolio WHERE active = 1').all() as any[];
 
-  // 2. Fetch prices
+  // 2. Fetch prices (with delay between requests to avoid Yahoo Finance rate limiting)
   for (const { ticker } of stocks) {
     const data = await fetchStockData(ticker);
+    await sleep(800);
     if (data) {
       db.prepare(`
         INSERT OR REPLACE INTO price_history (ticker, date, price, high52w, low52w, change_1y)
