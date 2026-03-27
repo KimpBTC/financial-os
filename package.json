@@ -2,10 +2,14 @@
   "name": "financial-os",
   "version": "3.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "cd client && npm install && npm run build",
-    "build:server": "cd server && npm install && npm run build",
+    "build": "echo '[1/2] Building client...' && npm run build:client && echo '[2/2] Building server...' && npm run build:server && echo 'Build complete!'",
+    "build:client": "cd client && echo 'Installing client deps...' && npm install && echo 'Compiling client...' && npm run build",
+    "build:server": "cd server && echo 'Installing server deps...' && npm install && echo 'Compiling server...' && npm run build",
     "start": "cd server && npm start",
     "dev:client": "cd client && npm run dev",
     "dev:server": "cd server && npm run dev"
