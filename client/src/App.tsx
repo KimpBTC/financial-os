@@ -6,29 +6,24 @@ import DollarTab from './components/dollar/DollarTab';
 import SimulatorTab from './components/simulator/SimulatorTab';
 import ConfigTab from './components/config/ConfigTab';
 import TelegramTab from './components/telegram/TelegramTab';
-import type { Stock } from './utils/scoring';
 import { getDollarSignal } from './utils/scoring';
 import { GLOSSARY } from './utils/explanations';
+import { useLiveData } from './hooks/useLiveData';
 
-// ─── Default Data ───
-const DEFAULT_STOCKS: Stock[] = [
-  { id: 1, ticker: 'IVV', name: 'iShares S&P 500', price: 648.14, high52: 670, low52: 490, change1y: 13.76, category: 'Core', color: '#4361ee', allocation: 50, owned: 1.04 },
-  { id: 2, ticker: 'AAPL', name: 'Apple Inc.', price: 253.74, high52: 288.62, low52: 169.21, change1y: 11.37, category: 'Growth', color: '#06d6a0', allocation: 17, owned: 0 },
-  { id: 3, ticker: 'MSFT', name: 'Microsoft Corp.', price: 370.33, high52: 555.45, low52: 344.79, change1y: -8.2, category: 'Growth', color: '#7209b7', allocation: 17, owned: 0 },
-  { id: 4, ticker: 'AMZN', name: 'Amazon.com', price: 210.96, high52: 258.60, low52: 161.38, change1y: 11.05, category: 'Growth', color: '#f72585', allocation: 16, owned: 0 },
-];
-
-const DOLLAR = { current: 913.83, high52: 1008.36, low52: 850.90 };
 const TABS = ['Dashboard', 'Acciones', 'Dólar', 'Simulador', 'Configuración', 'Telegram'];
 
 function App() {
   const [activeTab, setActiveTab] = useState('Dashboard');
-  const [stocks, setStocks] = useState<Stock[]>(DEFAULT_STOCKS);
-  const [monthlyBudget, setMonthlyBudget] = useState(350000);
   const [showGlossary, setShowGlossary] = useState(false);
 
-  const marketScore = 8; // Will be dynamic in Phase 4
-  const dZone = getDollarSignal(DOLLAR.current);
+  // Live data from backend API
+  const {
+    stocks, dollar, marketScore, monthlyBudget,
+    isConnected, lastUpdate, error,
+    setStocks, setMonthlyBudget, refreshData,
+  } = useLiveData();
+
+  const dZone = getDollarSignal(dollar.current);
 
   return (
     <div className="app-container">
@@ -43,22 +38,42 @@ function App() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span className="font-mono" style={{ fontSize: 9, color: 'var(--text-dim)' }}>USD/CLP</span>
-            <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: dZone.color }}>${DOLLAR.current}</span>
+            <span className="font-mono" style={{ fontSize: 11, fontWeight: 700, color: dZone.color }}>${dollar.current.toFixed(0)}</span>
           </div>
           <div style={{ width: 1, height: 14, background: 'var(--border-primary)' }} />
           <button onClick={() => setShowGlossary(!showGlossary)}
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-primary)', borderRadius: 6, padding: '3px 8px', color: 'var(--text-dim)', fontSize: 10, cursor: 'pointer' }}>
             📖 Glosario
           </button>
-          <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--color-success)', boxShadow: '0 0 6px var(--color-success)' }} />
+          {/* Connection Status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={refreshData} title="Click para actualizar datos">
+            <div style={{
+              width: 5, height: 5, borderRadius: '50%',
+              background: isConnected ? 'var(--color-success)' : '#e63946',
+              boxShadow: `0 0 6px ${isConnected ? 'var(--color-success)' : '#e63946'}`
+            }} />
+            <span className="font-mono" style={{ fontSize: 8, color: 'var(--text-faint)' }}>
+              {isConnected ? `LIVE${lastUpdate ? ` · ${lastUpdate}` : ''}` : 'OFFLINE'}
+            </span>
+          </div>
           <span className="font-mono" style={{ fontSize: 8, color: 'var(--text-faint)' }}>
             {new Date().toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
           </span>
         </div>
       </header>
+
+      {/* ═══ CONNECTION BANNER ═══ */}
+      {error && (
+        <div style={{ background: '#e6394615', borderBottom: '1px solid #e6394633', padding: '6px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: '#e63946' }}>⚠️ {error}</span>
+          <button onClick={refreshData} style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '3px 10px', color: '#e2e8f0', fontSize: 10, cursor: 'pointer' }}>
+            🔄 Reintentar
+          </button>
+        </div>
+      )}
 
       {/* ═══ GLOSSARY PANEL ═══ */}
       {showGlossary && (
@@ -89,12 +104,12 @@ function App() {
 
       {/* ═══ CONTENT ═══ */}
       <main className="app-content">
-        {activeTab === 'Dashboard' && <DashboardTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={DOLLAR} marketScore={marketScore} />}
+        {activeTab === 'Dashboard' && <DashboardTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={dollar} marketScore={marketScore} />}
         {activeTab === 'Acciones' && <StocksTab stocks={stocks} monthlyBudget={monthlyBudget} />}
-        {activeTab === 'Dólar' && <DollarTab dollar={DOLLAR} stocks={stocks} />}
+        {activeTab === 'Dólar' && <DollarTab dollar={dollar} stocks={stocks} />}
         {activeTab === 'Simulador' && <SimulatorTab />}
         {activeTab === 'Configuración' && <ConfigTab stocks={stocks} monthlyBudget={monthlyBudget} onBudgetChange={setMonthlyBudget} onStocksChange={setStocks} />}
-        {activeTab === 'Telegram' && <TelegramTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={DOLLAR} marketScore={marketScore} />}
+        {activeTab === 'Telegram' && <TelegramTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={dollar} marketScore={marketScore} />}
       </main>
     </div>
   );
