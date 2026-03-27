@@ -10,12 +10,21 @@ interface StockData {
   change1y: number;
 }
 
+// Singleton para reutilizar la instancia y evitar el aviso de encuesta repetido
+let _yf: any = null;
+async function getYF() {
+  if (!_yf) {
+    const { default: YahooFinance } = await import('yahoo-finance2');
+    _yf = new (YahooFinance as any)({ suppressNotices: ['yahooSurvey'] });
+  }
+  return _yf;
+}
+
 // Fetch stock data from Yahoo Finance
 export async function fetchStockData(ticker: string): Promise<StockData | null> {
   try {
-    const { default: YahooFinance } = await import('yahoo-finance2');
-    const yahooFinance = new (YahooFinance as any)();
-    const quote = await yahooFinance.quote(ticker);
+    const yf = await getYF();
+    const quote = await yf.quote(ticker);
     return {
       ticker,
       price: quote.regularMarketPrice || 0,
@@ -32,9 +41,8 @@ export async function fetchStockData(ticker: string): Promise<StockData | null> 
 // Fetch VIX from Yahoo Finance (^VIX)
 export async function fetchVIX(): Promise<number | null> {
   try {
-    const { default: YahooFinance } = await import('yahoo-finance2');
-    const yahooFinance = new (YahooFinance as any)();
-    const quote = await yahooFinance.quote('^VIX');
+    const yf = await getYF();
+    const quote = await yf.quote('^VIX');
     return quote.regularMarketPrice || null;
   } catch (e: any) {
     console.error('Error fetching VIX:', e.message);
@@ -59,9 +67,8 @@ export async function fetchFearGreed(): Promise<number | null> {
 // Fetch USD/CLP exchange rate
 export async function fetchDollarRate(): Promise<{ rate: number; high52w: number; low52w: number } | null> {
   try {
-    const { default: YahooFinance } = await import('yahoo-finance2');
-    const yahooFinance = new (YahooFinance as any)();
-    const quote = await yahooFinance.quote('USDCLP=X');
+    const yf = await getYF();
+    const quote = await yf.quote('USDCLP=X');
     return {
       rate: quote.regularMarketPrice || 913.83,
       high52w: quote.fiftyTwoWeekHigh || 1008.36,
