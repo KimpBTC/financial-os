@@ -1,25 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, Line } from 'recharts';
 import type { Stock } from '../../utils/scoring';
 import { calcDrawdown, calcStockScore, getMarketSignal } from '../../utils/scoring';
 import { explainMarketScore, explainDrawdown, explainDollarZone } from '../../utils/explanations';
 import { fmt, fK, fU } from '../../utils/formatters';
+import { api } from '../../services/api';
 
-const TIME_RANGES = ['1S', '1M', '3M', '6M', '1A', '5A'];
-const RANGE_LABELS: Record<string, string> = { '1S': 'Semana', '1M': 'Mes', '3M': '3 Meses', '6M': '6 Meses', '1A': '1 Año', '5A': '5 Años' };
-const RANGE_PTS: Record<string, number> = { '1S': 5, '1M': 22, '3M': 40, '6M': 50, '1A': 50, '5A': 50 };
-
-function genPortfolioEvolution(range: string, budget: number) {
-  const pts = RANGE_PTS[range] || 22;
-  const data = [];
-  let total = 624867, invested = 600000;
-  for (let i = 0; i < pts; i++) {
-    invested += budget / pts;
-    total += budget / pts * (1 + (Math.random() - 0.3) * 0.05);
-    data.push({ x: i, total: Math.round(total), invested: Math.round(invested) });
-  }
-  return data;
-}
+const TIME_RANGES = ['3M', '6M', '1A', '2A', '5A'];
+const RANGE_LABELS: Record<string, string> = { '3M': '3 Meses', '6M': '6 Meses', '1A': '1 Año', '2A': '2 Años', '5A': '5 Años' };
 
 const ttStyle = { backgroundColor: '#0c1222', border: '1px solid #1e293b', borderRadius: 8, padding: '6px 10px', fontSize: 11, color: '#e2e8f0' };
 
@@ -31,6 +19,14 @@ interface MarketSignalData {
   market_action: string;
 }
 
+interface Snapshot {
+  month: string;
+  total_wealth_clp: number;
+  total_contributions_clp: number;
+  net_gain_clp: number;
+  roi_pct: number;
+}
+
 interface Props {
   stocks: Stock[];
   monthlyBudget: number;
@@ -40,7 +36,10 @@ interface Props {
 }
 
 export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScore, marketSignal }: Props) {
-  const [chartRange, setChartRange] = useState('1M');
+  const [chartRange, setChartRange] = useState('6M');
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [monthsInvesting, setMonthsInvesting] = useState(0);
+  const [totalInvested, setTotalInvested] = useState(0);
 
   const totalAlloc = stocks.reduce((s, x) => s + x.allocation, 0);
   const totalWealth = stocks.reduce((s, x) => s + x.owned * x.price * dollar.current, 0) + 150000;
@@ -48,6 +47,41 @@ export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScor
   const signal = getMarketSignal(marketScore);
   const dZone = explainDollarZone(dollar.current);
   const pieData = stocks.map(s => ({ name: s.ticker, value: s.allocation, color: s.color }));
+
+  useEffect(() => {
+    // Load snapshots for portfolio evolution chart
+    api.getSnapshots(chartRange).then((rows: any[]) => {
+      setSnapshots(rows as Snapshot[]);
+    }).catch(() => {});
+  }, [chartRange]);
+
+  useEffect(() => {
+    // Calculate months investing and total invested from transactions
+    api.getTransactions().then((rows: any[]) => {
+      if (rows && rows.length > 0) {
+        const buys = rows.filter((t: any) => t.type === 'BUY');
+        const total = buys.reduce((s: number, t: any) => s + (t.total_clp || 0), 0);
+        setTotalInvested(total);
+
+        // Unique months with at least one transaction
+        const months = new Set(buys.map((t: any) => t.date?.slice(0, 7)));
+        setMonthsInvesting(months.size);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Build chart data: use snapshots if available, otherwise current point only
+  const chartData = snapshots.length > 0
+    ? snapshots.map((s, i) => ({
+        x: i,
+        label: s.month,
+        total: s.total_wealth_clp,
+        invested: s.total_contributions_clp,
+      }))
+    : [{ x: 0, label: 'Hoy', total: Math.round(totalWealth), invested: totalInvested || Math.round(totalWealth * 0.9) }];
+
+  const latestSnapshot = snapshots[snapshots.length - 1];
+  const roi = latestSnapshot?.roi_pct ?? (totalInvested > 0 ? ((totalWealth - totalInvested) / totalInvested * 100) : 0);
 
   return (
     <div className="animate-in">
@@ -88,6 +122,11 @@ export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScor
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div className="card-title">Evolución de tu dinero
               <span className="help-trigger">?<span className="help-tooltip">Cómo ha crecido tu inversión con el tiempo. La línea azul es tu valor real, la punteada es lo que pusiste.</span></span>
+              {roi !== 0 && (
+                <span style={{ marginLeft: 8, fontSize: 10, color: roi >= 0 ? '#06d6a0' : '#e63946', fontWeight: 700 }}>
+                  {roi >= 0 ? '+' : ''}{roi.toFixed(1)}% ROI
+                </span>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 2, background: '#020617', borderRadius: 8, padding: 2 }}>
               {TIME_RANGES.map(r => (
@@ -101,17 +140,29 @@ export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScor
             </div>
           </div>
           <ResponsiveContainer width="100%" height={190}>
-            <AreaChart data={genPortfolioEvolution(chartRange, monthlyBudget)}>
-              <defs><linearGradient id="gE" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#4361ee" stopOpacity={0.35} /><stop offset="100%" stopColor="#4361ee" stopOpacity={0} /></linearGradient></defs>
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="gE" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#4361ee" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#4361ee" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="x" tick={false} axisLine={{ stroke: '#1e293b' }} />
+              <XAxis dataKey="label" tick={{ fill: '#475569', fontSize: 8 }} axisLine={{ stroke: '#1e293b' }} interval="preserveStartEnd" />
               <YAxis tick={{ fill: '#475569', fontSize: 9 }} axisLine={{ stroke: '#1e293b' }} tickFormatter={fK} />
               <Tooltip contentStyle={ttStyle} formatter={(v: any) => fmt(Number(v))} />
-              <Area type="monotone" dataKey="total" stroke="#4361ee" fill="url(#gE)" strokeWidth={2} name="Tu inversión" />
-              <Line type="monotone" dataKey="invested" stroke="#334155" strokeDasharray="4 4" dot={false} name="Lo que pusiste" />
+              <Area type="monotone" dataKey="total" stroke="#4361ee" fill="url(#gE)" strokeWidth={2} name="Tu patrimonio" />
+              <Line type="monotone" dataKey="invested" stroke="#334155" strokeDasharray="4 4" dot={false} name="Lo que pusiste" strokeWidth={1.5} />
             </AreaChart>
           </ResponsiveContainer>
-          <div style={{ textAlign: 'center', fontSize: 9, color: '#475569', marginTop: 4 }}>{RANGE_LABELS[chartRange]}</div>
+          {snapshots.length === 0 && (
+            <div style={{ textAlign: 'center', fontSize: 9, color: '#334155', marginTop: 4 }}>
+              Los snapshots mensuales se generan automáticamente — registra una compra para comenzar
+            </div>
+          )}
+          {snapshots.length > 0 && (
+            <div style={{ textAlign: 'center', fontSize: 9, color: '#475569', marginTop: 4 }}>{RANGE_LABELS[chartRange]}</div>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -173,7 +224,7 @@ export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScor
             <div key={s.id} className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span className="font-mono" style={{ background: `${s.color}22`, color: s.color, padding: '2px 7px', borderRadius: 5, fontSize: 10, fontWeight: 800 }}>{s.ticker}</span>
-                <span className="font-mono" style={{ fontSize: 10, color: s.change1y >= 0 ? '#06d6a0' : '#e63946' }}>{s.change1y >= 0 ? '+' : ''}{s.change1y}%</span>
+                <span className="font-mono" style={{ fontSize: 10, color: s.change1y >= 0 ? '#06d6a0' : '#e63946' }}>{s.change1y >= 0 ? '+' : ''}{s.change1y.toFixed(1)}%</span>
               </div>
               <div className="font-mono" style={{ fontSize: 15, fontWeight: 800 }}>{fU(s.price)}</div>
               <div style={{ fontSize: 9, color: '#94a3b8', marginTop: 4, lineHeight: 1.5 }}>
@@ -213,15 +264,18 @@ export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScor
           </div>
           {[
             { l: '🛡️ Fondo de emergencia', v: 150000, m: 2100000, c: '#f4a261' },
-            { l: '🎯 Primer $1M', v: Math.round(totalWealth), m: 1000000, c: '#4361ee' },
+            { l: '🎯 Primer $1M CLP', v: Math.round(totalWealth), m: 1000000, c: '#4361ee' },
             { l: '💰 $5M patrimonio', v: Math.round(totalWealth), m: 5000000, c: '#06d6a0' },
-            { l: '📅 12 meses invirtiendo', v: 5, m: 12, c: '#f72585' },
+            { l: '📅 12 meses invirtiendo', v: monthsInvesting, m: 12, c: '#f72585' },
           ].map(g => {
             const p = Math.min(g.v / g.m * 100, 100);
             return (
               <div key={g.l} style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginBottom: 2 }}>
-                  <span>{g.l}</span><span className="font-mono">{p.toFixed(0)}%</span>
+                  <span>{g.l}</span>
+                  <span className="font-mono">
+                    {g.l.includes('meses') ? `${g.v}/${g.m}` : `${p.toFixed(0)}%`}
+                  </span>
                 </div>
                 <div style={{ height: 4, background: '#1e293b', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${p}%`, background: g.c, borderRadius: 2, transition: 'width 0.6s' }} />

@@ -29,6 +29,33 @@ export async function fetchStockData(ticker: string): Promise<StockData | null> 
   }
 }
 
+// Fetch VIX from Yahoo Finance (^VIX)
+export async function fetchVIX(): Promise<number | null> {
+  try {
+    const { default: YahooFinance } = await import('yahoo-finance2');
+    const yahooFinance = new (YahooFinance as any)();
+    const quote = await yahooFinance.quote('^VIX');
+    return quote.regularMarketPrice || null;
+  } catch (e: any) {
+    console.error('Error fetching VIX:', e.message);
+    return null;
+  }
+}
+
+// Fetch Fear & Greed Index from alternative.me (free, no auth)
+export async function fetchFearGreed(): Promise<number | null> {
+  try {
+    const res = await fetch('https://api.alternative.me/fng/?limit=1&format=json');
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const value = parseInt(data?.data?.[0]?.value);
+    return isNaN(value) ? null : value;
+  } catch (e: any) {
+    console.error('Error fetching Fear & Greed:', e.message);
+    return null;
+  }
+}
+
 // Fetch USD/CLP exchange rate
 export async function fetchDollarRate(): Promise<{ rate: number; high52w: number; low52w: number } | null> {
   try {
@@ -118,10 +145,20 @@ export async function runDataPipeline(): Promise<void> {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(today, dollar.rate, dollar.high52w, dollar.low52w, dollarPos, dollarSignal);
 
-    // 4. Calculate market score (simplified — VIX/F&G from stock data)
-    const sp500Data = await fetchStockData('SPY');
+    // 4. Fetch VIX, Fear & Greed and SP500 drawdown in parallel
+    const [sp500Data, vixValue, fngValue] = await Promise.all([
+      fetchStockData('SPY'),
+      fetchVIX(),
+      fetchFearGreed(),
+    ]);
     const sp500dd = sp500Data ? ((sp500Data.price - sp500Data.high52w) / sp500Data.high52w) * 100 : -3;
-    const marketScore = calcMarketScore(sp500dd, 18, 62, dollarPos);
+
+    // Fallback to last saved value if fetch fails
+    const lastSignal = db.prepare('SELECT vix, fear_greed FROM market_signals ORDER BY date DESC LIMIT 1').get() as any;
+    const vix = vixValue ?? lastSignal?.vix ?? 18;
+    const fearGreed = fngValue ?? lastSignal?.fear_greed ?? 50;
+
+    const marketScore = calcMarketScore(sp500dd, vix, fearGreed, dollarPos);
 
     let marketAction = 'NORMAL';
     if (marketScore >= 75) marketAction = 'ALL_IN';
@@ -132,7 +169,7 @@ export async function runDataPipeline(): Promise<void> {
     db.prepare(`
       INSERT OR REPLACE INTO market_signals (date, vix, fear_greed, sp500_drawdown, market_score, market_action, dollar_rate, dollar_signal)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(today, 18, 62, sp500dd, marketScore, marketAction, dollar.rate, dollarSignal);
+    `).run(today, vix, fearGreed, sp500dd, marketScore, marketAction, dollar.rate, dollarSignal);
   }
 
   console.log('✅ Data pipeline complete');

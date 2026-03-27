@@ -105,7 +105,7 @@ function App() {
       {/* ═══ CONTENT ═══ */}
       <main className="app-content">
         {activeTab === 'Dashboard' && <DashboardTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={dollar} marketScore={marketScore} marketSignal={marketSignal} />}
-        {activeTab === 'Acciones' && <StocksTab stocks={stocks} monthlyBudget={monthlyBudget} />}
+        {activeTab === 'Acciones' && <StocksTab stocks={stocks} monthlyBudget={monthlyBudget} dollarRate={dollar.current} />}
         {activeTab === 'Dólar' && <DollarTab dollar={dollar} stocks={stocks} />}
         {activeTab === 'Simulador' && <SimulatorTab />}
         {activeTab === 'Configuración' && <ConfigTab stocks={stocks} monthlyBudget={monthlyBudget} onBudgetChange={setMonthlyBudget} onStocksChange={setStocks} />}
