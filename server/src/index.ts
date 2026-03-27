@@ -6,6 +6,8 @@ import marketRoutes from './routes/market';
 import stockRoutes from './routes/stocks';
 import dollarRoutes from './routes/dollar';
 import telegramRoutes from './routes/telegram';
+import transactionRoutes from './routes/transactions';
+import snapshotRoutes from './routes/snapshots';
 import { startCronJobs } from './services/cronService';
 
 dotenv.config();
@@ -28,6 +30,8 @@ app.use('/api/market', marketRoutes);
 app.use('/api/stocks', stockRoutes);
 app.use('/api/dollar', dollarRoutes);
 app.use('/api/telegram', telegramRoutes);
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/snapshots', snapshotRoutes);
 
 // Simulator (inline — simple calculation)
 app.post('/api/simulator/project', (req, res) => {

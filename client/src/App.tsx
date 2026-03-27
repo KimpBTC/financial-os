@@ -18,7 +18,7 @@ function App() {
 
   // Live data from backend API
   const {
-    stocks, dollar, marketScore, monthlyBudget,
+    stocks, dollar, marketScore, marketSignal, monthlyBudget,
     isConnected, lastUpdate, error,
     setStocks, setMonthlyBudget, refreshData,
   } = useLiveData();
@@ -104,7 +104,7 @@ function App() {
 
       {/* ═══ CONTENT ═══ */}
       <main className="app-content">
-        {activeTab === 'Dashboard' && <DashboardTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={dollar} marketScore={marketScore} />}
+        {activeTab === 'Dashboard' && <DashboardTab stocks={stocks} monthlyBudget={monthlyBudget} dollar={dollar} marketScore={marketScore} marketSignal={marketSignal} />}
         {activeTab === 'Acciones' && <StocksTab stocks={stocks} monthlyBudget={monthlyBudget} />}
         {activeTab === 'Dólar' && <DollarTab dollar={dollar} stocks={stocks} />}
         {activeTab === 'Simulador' && <SimulatorTab />}

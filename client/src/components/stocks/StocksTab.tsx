@@ -1,31 +1,63 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import type { Stock } from '../../utils/scoring';
 import { calcDrawdown, calcStockScore } from '../../utils/scoring';
 import { explainStockScore } from '../../utils/explanations';
 import { fU, fmt } from '../../utils/formatters';
+import { api } from '../../services/api';
 
 const TIME_RANGES = ['1S', '1M', '3M', '6M', '1A', '5A'];
-const RANGE_PTS: Record<string, number> = { '1S': 5, '1M': 22, '3M': 40, '6M': 50, '1A': 50, '5A': 50 };
-
-function genTimeData(base: number, vol: number, range: string) {
-  const pts = Math.min(RANGE_PTS[range] || 22, 60);
-  let v = base;
-  return Array.from({ length: pts }, (_, i) => {
-    v += (Math.random() - 0.48) * vol;
-    v = Math.max(v * 0.85, v);
-    return { x: i, price: Math.round(v * 100) / 100 };
-  });
-}
 
 interface Props {
   stocks: Stock[];
   monthlyBudget: number;
 }
 
+type ChartPoint = { x: number; price: number };
+type ChartCache = Record<string, Record<string, ChartPoint[]>>;
+
 export default function StocksTab({ stocks, monthlyBudget }: Props) {
   const [chartRange, setChartRange] = useState('1M');
+  const [chartCache, setChartCache] = useState<ChartCache>({});
+  const [loadingTicker, setLoadingTicker] = useState<string | null>(null);
+
   const totalAlloc = stocks.reduce((s, x) => s + x.allocation, 0);
+
+  const loadHistory = useCallback(async (range: string) => {
+    const missing = stocks.filter(s => !chartCache[s.ticker]?.[range]);
+    if (missing.length === 0) return;
+
+    setLoadingTicker(missing[0].ticker);
+
+    const updates: ChartCache = {};
+    await Promise.all(missing.map(async (s) => {
+      try {
+        const rows: any[] = await api.getStockHistory(s.ticker, range);
+        if (rows && rows.length > 0) {
+          updates[s.ticker] = {
+            [range]: rows.map((r, i) => ({ x: i, price: r.price })),
+          };
+        }
+      } catch {
+        // offline — no chart data
+      }
+    }));
+
+    if (Object.keys(updates).length > 0) {
+      setChartCache(prev => {
+        const next = { ...prev };
+        for (const ticker of Object.keys(updates)) {
+          next[ticker] = { ...(prev[ticker] || {}), ...updates[ticker] };
+        }
+        return next;
+      });
+    }
+    setLoadingTicker(null);
+  }, [stocks, chartCache]);
+
+  useEffect(() => {
+    loadHistory(chartRange);
+  }, [chartRange, stocks.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="animate-in">
@@ -40,7 +72,10 @@ export default function StocksTab({ stocks, monthlyBudget }: Props) {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>{stocks.length} inversiones en tu portafolio</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>
+          {stocks.length} inversiones en tu portafolio
+          {loadingTicker && <span style={{ fontSize: 10, color: '#475569', marginLeft: 8 }}>cargando {loadingTicker}…</span>}
+        </div>
         <div style={{ display: 'flex', gap: 2, background: '#020617', borderRadius: 8, padding: 2 }}>
           {TIME_RANGES.map(r => (
             <button key={r} onClick={() => setChartRange(r)} style={{
@@ -55,10 +90,9 @@ export default function StocksTab({ stocks, monthlyBudget }: Props) {
       <div className="grid-2">
         {stocks.map(s => {
           const dd = calcDrawdown(s);
-          // from-low percentage used by score
           const sc = calcStockScore(s);
           const rec = explainStockScore(s.ticker, sc);
-          const td = genTimeData(s.price, s.price * 0.01, chartRange);
+          const chartPoints = chartCache[s.ticker]?.[chartRange] ?? [];
 
           return (
             <div key={s.id} className="card" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -75,17 +109,24 @@ export default function StocksTab({ stocks, monthlyBudget }: Props) {
                 <div style={{ textAlign: 'right' }}>
                   <div className="font-mono" style={{ fontSize: 16, fontWeight: 800 }}>{fU(s.price)}</div>
                   <div className="font-mono" style={{ fontSize: 10, color: s.change1y >= 0 ? '#06d6a0' : '#e63946' }}>
-                    {s.change1y >= 0 ? '+' : ''}{s.change1y}% en 1 año
+                    {s.change1y >= 0 ? '+' : ''}{s.change1y.toFixed(2)}% en 1 año
                   </div>
                 </div>
               </div>
 
-              <ResponsiveContainer width="100%" height={80}>
-                <AreaChart data={td}>
-                  <defs><linearGradient id={`gs${s.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={s.color} stopOpacity={0.25} /><stop offset="100%" stopColor={s.color} stopOpacity={0} /></linearGradient></defs>
-                  <Area type="monotone" dataKey="price" stroke={s.color} fill={`url(#gs${s.id})`} strokeWidth={1.5} dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div style={{ position: 'relative' }}>
+                <ResponsiveContainer width="100%" height={80}>
+                  <AreaChart data={chartPoints.length > 1 ? chartPoints : [{ x: 0, price: s.price * 0.97 }, { x: 1, price: s.price }]}>
+                    <defs><linearGradient id={`gs${s.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={s.color} stopOpacity={0.25} /><stop offset="100%" stopColor={s.color} stopOpacity={0} /></linearGradient></defs>
+                    <Area type="monotone" dataKey="price" stroke={s.color} fill={`url(#gs${s.id})`} strokeWidth={1.5} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+                {chartPoints.length === 0 && (
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 9, color: '#334155' }}>
+                    sin historial
+                  </div>
+                )}
+              </div>
 
               {/* Metrics */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginTop: 6 }}>

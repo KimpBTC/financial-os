@@ -23,14 +23,23 @@ function genPortfolioEvolution(range: string, budget: number) {
 
 const ttStyle = { backgroundColor: '#0c1222', border: '1px solid #1e293b', borderRadius: 8, padding: '6px 10px', fontSize: 11, color: '#e2e8f0' };
 
+interface MarketSignalData {
+  vix: number;
+  fear_greed: number;
+  sp500_drawdown: number;
+  market_score: number;
+  market_action: string;
+}
+
 interface Props {
   stocks: Stock[];
   monthlyBudget: number;
   dollar: { current: number; high52: number; low52: number };
   marketScore: number;
+  marketSignal: MarketSignalData | null;
 }
 
-export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScore }: Props) {
+export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScore, marketSignal }: Props) {
   const [chartRange, setChartRange] = useState('1M');
 
   const totalAlloc = stocks.reduce((s, x) => s + x.allocation, 0);
@@ -124,8 +133,10 @@ export default function DashboardTab({ stocks, monthlyBudget, dollar, marketScor
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 8 }}>
               {[
-                { l: 'VIX', v: '18.2', c: '#e9c46a' }, { l: 'F&G', v: '62', c: '#f4a261' },
-                { l: 'Caída', v: '-3.2%', c: '#4361ee' }, { l: 'Dólar', v: `$${dollar.current.toFixed(0)}`, c: dZone.color },
+                { l: 'VIX', v: marketSignal ? marketSignal.vix.toFixed(1) : '—', c: '#e9c46a' },
+                { l: 'F&G', v: marketSignal ? String(marketSignal.fear_greed) : '—', c: '#f4a261' },
+                { l: 'Caída', v: marketSignal ? `${marketSignal.sp500_drawdown.toFixed(1)}%` : '—', c: '#4361ee' },
+                { l: 'Dólar', v: `$${dollar.current.toFixed(0)}`, c: dZone.color },
               ].map(d => (
                 <div key={d.l} style={{ background: '#020617', borderRadius: 6, padding: '3px 6px' }}>
                   <div style={{ fontSize: 8, color: '#475569' }}>{d.l}</div>
